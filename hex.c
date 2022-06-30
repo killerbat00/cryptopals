@@ -12,12 +12,14 @@
 unsigned char* hex2bytes(const char *hexstring, size_t *numBytes) {
     int len = strlen(hexstring);
     if (len % 2 != 0) {
+        *numBytes = 0;
         return NULL;
     }
 
     *numBytes = len / 2;
     unsigned char* output = malloc(*numBytes);
     if (output == NULL) {
+        *numBytes = 0;
         return NULL;
     }
 

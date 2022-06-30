@@ -7,9 +7,9 @@
  * 
  * @param hexstring the hexstring to convert.
  * @param numBytes contains the number of bytes in the resulting string.
- * @return unsigned char* of resulting bytes.
+ * @return unsigned char* of resulting bytes. MUST BE free'D!
  */
-unsigned char* hex2bytes(const char *hexstring, int *numBytes) {
+unsigned char* hex2bytes(const char *hexstring, size_t *numBytes) {
     int len = strlen(hexstring);
     if (len % 2 != 0) {
         return NULL;
@@ -33,9 +33,9 @@ unsigned char* hex2bytes(const char *hexstring, int *numBytes) {
  * 
  * @param bytes the bytes to convert.
  * @param numBytes the number of bytes to convert.
- * @return char* of the resulting hexstring.
+ * @return char* of the resulting hexstring. MUST BE free'D!
  */
-char* bytes2hex(const unsigned char *bytes, int numBytes) {
+char* bytes2hex(const unsigned char *bytes, size_t numBytes) {
     char* output = malloc((numBytes * 2) + 1);
     if (output == NULL) {
         return NULL;

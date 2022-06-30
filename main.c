@@ -5,18 +5,23 @@
 
 int main(void) {
     const char *hexstring = "49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d";
-    printf("%s\n", hexstring);
+    printf("Input:\n%s\n", hexstring);
 
-    int outputLen;
+    size_t outputLen;
     unsigned char *output = hex2bytes(hexstring, &outputLen);
     if (output == NULL) {
         printf("Problem converting hexstring to bytes.\n");
         return 1;
     }
-    printf("%s\n", output);
+
+    printf("Output:\n");
+    printf("Bytes:\t%s\n", output);
 
     char* newhexstring = bytes2hex(output, outputLen);
-    printf("%s\n", newhexstring);
+    if (output == NULL) {
+        printf("Problem converting bytes to hexstring.\n");
+    }
+    printf("Hex:  \t%s\n", newhexstring);
 
     free(output);
     free(newhexstring);

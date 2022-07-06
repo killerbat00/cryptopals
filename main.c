@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <ctype.h>
 
 /**
  * @brief Converts a hexstring to the equivalent bytestring.
@@ -173,19 +174,159 @@ unsigned char* base642bytes(const char* base64string, size_t* numBytes) {
     return start;
 }
 
-int main(void) {
-    char hexstring[] = "49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d";
+char* fixed_xor_hex(const char *h1, const char *h2) {
+    size_t h1len = strlen(h1);
+    size_t h2len = strlen(h2);
+    if (h1len != h2len) {
+        return NULL;
+    }
+
+    size_t olen = 0;
+    unsigned char *h1bytes = hex2bytes(h1, &olen);
+    if (h1bytes == NULL) {
+        return NULL;
+    }
+
+    size_t o2len = 0;
+    unsigned char *h2bytes = hex2bytes(h2, &o2len);
+    if (h2bytes == NULL) {
+        free(h1bytes);
+        return NULL;
+    }
+
+    if (olen != o2len) {
+        free(h1bytes);
+        free(h2bytes);
+        return NULL;
+    }
+
+    unsigned char *xored = calloc(olen + 1, sizeof(unsigned char));
+    if (xored == NULL) {
+        free(h1bytes);
+        free(h2bytes);
+        return NULL;
+    }
+
+    for (int i = 0; i < olen; i++) {
+        xored[i] = h1bytes[i] ^ h2bytes[i];
+    }
+
+    char *output = bytes2hex(xored, olen);
+    free(h1bytes);
+    free(h2bytes);
+    free(xored);
+
+    return output;
+}
+
+char* single_byte_xor_hex(const char *h1, const unsigned char h2) {
+    size_t h1len = strlen(h1);
+
+    if (h1len == 0 || h2 == '\0') {
+        return NULL;
+    }
+
+    size_t olen = 0;
+    unsigned char *h1bytes = hex2bytes(h1, &olen);
+    if (h1bytes == NULL || olen == 0) {
+        return NULL;
+    }
+
+    unsigned char *xored = calloc(olen + 1, sizeof(unsigned char));
+    if (xored == NULL) {
+        free(h1bytes);
+        return NULL;
+    }
+
+    for (int i = 0; i < olen; i++) {
+        xored[i] = h1bytes[i] ^ h2;
+    }
+
+    char *output = bytes2hex(xored, olen);
+    free(h1bytes);
+    free(xored);
+
+    return output;
+}
+
+static const unsigned char kLewendFrequency[] = "etaoinshrdlcumwfgypbvkjxqz";
+static const double english_frequencies[] = {
+        .082, .015, .028, .043, .13, .022, .02, .061,
+        .07, .0015, .0077, .04, .024, .067, .075,
+        .019, .00095, .06, .063, .091, .028, .0098,
+        .024, .0015, .02, .00074, .1716
+}; // a, b, c, d ... <space>
+
+unsigned char* char_frequency(const unsigned char *bytestring, size_t numBytes, size_t *outBytes) {
+    if (numBytes == 0) {
+        return NULL;
+    }
+
+    unsigned char freq[256] = {0};
+    unsigned char chars[256] = {0};
+
+    for (int i = 0; i < 256; i++) {
+        chars[i] = (unsigned char) i;
+    }
+
+    for (int i = 0; i < numBytes; i++) {
+        freq[tolower(bytestring[i])]++;
+    }
+
+    *outBytes += freq[0] > 0;
+    for (int i = 1; i < 256; i++) {
+        if (freq[i] > 0) {
+            *outBytes += 1;
+        }
+        int j = i;
+        while (j > 0 && freq[j-1] < freq[j]) {
+            unsigned char tmp = freq[j];
+            unsigned char tmp2 = chars[j];
+            freq[j] = freq[j-1];
+            chars[j] = chars[j-1];
+            freq[j-1] = tmp;
+            chars[j-1] = tmp2;
+            j -= 1;
+        }
+    }
+
+    unsigned char *output = calloc(*outBytes + 1, sizeof(unsigned char));
+    if (output == NULL) {
+        return NULL;
+    }
+
+    int j = 0;
+    for (int i = 0; i < *outBytes; i++) {
+        if (!isspace(chars[i]) && !ispunct(chars[i])) {
+            output[j] = chars[i];
+            j += 1;
+        }
+    }
+    *outBytes = (size_t) j;
+    return output;
+}
+
+char single_byte_xor_cipher(const char *hexstring) {
+    size_t len = strlen(hexstring);
+    if (len == 0) {
+        return '\0';
+    }
+
+}
+
+int challenge_one() {
+    char *hexstring = "49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d";
+    char *b64output = "SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t";
+
     size_t outputLen = 0;
     unsigned char *output = hex2bytes(hexstring, &outputLen);
     if (output == NULL) {
-        free(output);
         return 1;
     }
 
     char* newhexstring = bytes2hex(output, outputLen);
     if (newhexstring == NULL) {
         free(output);
-        free(newhexstring);
         return 1;
     }
 
@@ -199,8 +340,13 @@ int main(void) {
     if (base64string == NULL) {
         free(output);
         free(newhexstring);
-        free(base64string);
         return 1;
+    }
+
+    if (strcmp(b64output, base64string) != 0) {
+        printf("Hexstring conversion does not match expected value.\n");
+        printf("Original\t%s\n", b64output);
+        printf("New     \t%s\n", base64string);
     }
 
     size_t outputLen2 = 0;
@@ -210,11 +356,10 @@ int main(void) {
         free(output);
         free(newhexstring);
         free(base64string);
-        free(b64bytes);
         return 1;
     }
 
-    if (memcmp(output, b64bytes, outputLen2) != 0) {
+    if (memcmp(output, b64bytes, outputLen2) != 0 || outputLen != outputLen2) {
         printf("Bytes post base64 encoding & decoding don't match.");
         printf("Original\t%s\n", output);
         printf("New     \t%s\n", b64bytes);
@@ -225,5 +370,52 @@ int main(void) {
     free(base64string);
     free(b64bytes);
 
+    return 0;
+}
+
+int challenge_two() {
+    char *a = "1c0111001f010100061a024b53535009181c";
+    char *b = "686974207468652062756c6c277320657965";
+    char *expectedOutput = "746865206b696420646f6e277420706c6179";
+
+    char *output = fixed_xor_hex(a, b);
+    if (output == NULL) {
+        return 1;
+    }
+    if (strcmp(expectedOutput, output) != 0) {
+        printf("Fixed XOR did not match expected value.\n");
+        printf("Expected:\t%s\n", expectedOutput);
+        printf("Output:  \t%s\n", output);
+        return 1;
+    }
+    free(output);
+    return 0;
+}
+
+int challenge_three() {
+
+    size_t numBytes = 0;
+    unsigned char testString[] = {'T','h','i','s',' ', 'i', 's', ' ','m', 'y', ' ', 't', 'e', 's', 't', ' ', 's', 't', 'r', 'i', 'n', 'g', '.'};
+    unsigned char *freqString = char_frequency(testString, 23, &numBytes);
+    printf("%s\n", freqString);
+
+    return 0;
+}
+
+int main(void) {
+    if (challenge_one() != 0) {
+        printf("Challenge one failed.\n");
+        return 1;
+    }
+
+    if (challenge_two() != 0) {
+        printf("Challenge two failed.\n");
+        return 1;
+    }
+
+    if (challenge_three() != 0) {
+        printf("Challenge three failed.\n");
+        return 1;
+    }
     return 0;
 }

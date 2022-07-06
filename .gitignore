@@ -2,3 +2,5 @@ bin*
 .idea*
 .vscode*
 cmake-build-debug*
+CMakeLists.txt
+valgrind.rpt

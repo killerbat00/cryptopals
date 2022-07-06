@@ -324,7 +324,7 @@ double score_string(const unsigned char *bytestring, size_t numBytes) {
         }
     }
 
-    if (ignored > numBytes / 3) {
+    if (ignored > numBytes / 4) { // spaces have a 20% probability
         return -1;
     }
 
@@ -444,13 +444,19 @@ int challenge_three() {
         free(xored);
     }
 
-    printf("Likely key: %c\n", (char) minScore);
+    if ((char) minScore != 'X') {
+        return 1;
+    }
+
     unsigned char *likelyMsg;
     size_t outLen = 0;
     if ((likelyMsg = single_byte_xor_hex(hexString, (unsigned char) minScore, &outLen)) == NULL) {
         return 1;
     }
-    printf("Likely message: %s\n", likelyMsg);
+
+    if (strcmp((char *)likelyMsg, "Cooking MC's like a pound of bacon") != 0) {
+        return 1;
+    }
     free(likelyMsg);
     return 0;
 }

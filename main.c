@@ -73,6 +73,12 @@ static const unsigned char decode[] = {
         66,66,66,66,66,66
 };
 
+/**
+ * Encodes an array of bytes to a base64-encoded string.
+ * @param bytes the bytes to base64 encode
+ * @param numBytes the number of bytes to encode
+ * @return base64-encoded string of bytes
+ */
 char* bytes2base64(const unsigned char* bytes, size_t numBytes) {
     unsigned char *out, *pos;
     const unsigned char *end, *in;
@@ -115,9 +121,15 @@ char* bytes2base64(const unsigned char* bytes, size_t numBytes) {
     return output;
 }
 
+/**
+ * Decodes a base64-encoded string into an array of bytes.
+ * @param base64string base64-encoded string
+ * @param numBytes number of bytes in output
+ * @return base64 decoded bytes
+ */
 unsigned char* base642bytes(const char* base64string, size_t* numBytes) {
     size_t len = strlen(base64string);
-    /* will be at least this big but we may skip whitespace */
+    /* will be at least this big, but we may skip whitespace */
     *numBytes = ((len / 4) * 3);
 
     unsigned char *output = calloc(*numBytes + 1, sizeof(unsigned char));
@@ -174,6 +186,49 @@ unsigned char* base642bytes(const char* base64string, size_t* numBytes) {
     return start;
 }
 
+#define max(a,b) \
+    ({ __typeof__ (a) _a = (a); \
+        __typeof__ (b) _b = (b); \
+       _a > _b ? _a : _b; })
+
+#define min(a,b) \
+    ({ __typeof__ (a) _a = (a); \
+        __typeof__ (b) _b = (b); \
+       _a < _b ? _a : _b; })
+
+/**
+ * XORs two bytestrings together, returning the result (which must be free'd).
+ * If one bytestring is smaller than the other, repeating-key XOR is used.
+ * This will deteriorate into single-byte XOR if one bytestring is 1 element long.
+ * @param b1 bytestring to XOR
+ * @param b1len number of bytes in b1
+ * @param b2 bytestring to XOR
+ * @param b2len number of bytes in b2
+ * @param outLen length of the XOR'd bytes
+ * @return unsigned char pointer to the XOR'd bytes
+ */
+unsigned char* xor_bytes(const unsigned char *b1, size_t b1len, const unsigned char *b2, size_t b2len, size_t *outLen) {
+    if (b1len == 0 || b2len == 0) {
+        return NULL;
+    }
+    const unsigned char *maxBytes = b1len > b2len ? b1 : b2;
+    const unsigned char *minBytes = b1len > b2len ? b2 : b1;
+    *outLen = max(b1len, b2len);
+    int minLen = (int) min(b1len, b2len);
+    unsigned char *xored;
+
+    if ((xored = calloc(*outLen + 1, sizeof(unsigned char))) == NULL) {
+        return NULL;
+    }
+
+    for (int i = 0, j; i < *outLen; i++) {
+        j = i % minLen;
+        xored[i] = maxBytes[i] ^ minBytes[j];
+    }
+
+    return xored;
+}
+
 char* fixed_xor_hex(const char *h1, const char *h2) {
     size_t h1len = strlen(h1);
     size_t h2len = strlen(h2);
@@ -181,15 +236,13 @@ char* fixed_xor_hex(const char *h1, const char *h2) {
         return NULL;
     }
 
-    size_t olen = 0;
-    unsigned char *h1bytes = hex2bytes(h1, &olen);
-    if (h1bytes == NULL) {
+    size_t olen = 0, o2len = 0;
+    unsigned char *h1bytes;
+    unsigned char *h2bytes;
+    if ((h1bytes = hex2bytes(h1, &olen)) == NULL) {
         return NULL;
     }
-
-    size_t o2len = 0;
-    unsigned char *h2bytes = hex2bytes(h2, &o2len);
-    if (h2bytes == NULL) {
+    if ((h2bytes = hex2bytes(h2, &o2len)) == NULL) {
         free(h1bytes);
         return NULL;
     }
@@ -200,15 +253,12 @@ char* fixed_xor_hex(const char *h1, const char *h2) {
         return NULL;
     }
 
-    unsigned char *xored = calloc(olen + 1, sizeof(unsigned char));
+    size_t xoredLen = 0;
+    unsigned char *xored = xor_bytes(h1bytes, olen, h2bytes, olen, &xoredLen);
     if (xored == NULL) {
         free(h1bytes);
         free(h2bytes);
         return NULL;
-    }
-
-    for (int i = 0; i < olen; i++) {
-        xored[i] = h1bytes[i] ^ h2bytes[i];
     }
 
     char *output = bytes2hex(xored, olen);
@@ -219,10 +269,10 @@ char* fixed_xor_hex(const char *h1, const char *h2) {
     return output;
 }
 
-char* single_byte_xor_hex(const char *h1, const unsigned char h2) {
+unsigned char* single_byte_xor_hex(const char *h1, const unsigned char h2, size_t *outLen) {
     size_t h1len = strlen(h1);
 
-    if (h1len == 0 || h2 == '\0') {
+    if (h1len == 0) {
         return NULL;
     }
 
@@ -232,24 +282,17 @@ char* single_byte_xor_hex(const char *h1, const unsigned char h2) {
         return NULL;
     }
 
-    unsigned char *xored = calloc(olen + 1, sizeof(unsigned char));
-    if (xored == NULL) {
+    unsigned char *xored = xor_bytes(h1bytes, olen, &h2, 1, outLen);
+    if (xored == NULL || olen != *outLen) {
+        *outLen = 0;
         free(h1bytes);
         return NULL;
     }
 
-    for (int i = 0; i < olen; i++) {
-        xored[i] = h1bytes[i] ^ h2;
-    }
-
-    char *output = bytes2hex(xored, olen);
     free(h1bytes);
-    free(xored);
-
-    return output;
+    return xored;
 }
 
-static const unsigned char kLewendFrequency[] = "etaoinshrdlcumwfgypbvkjxqz";
 static const double english_frequencies[] = {
         .082, .015, .028, .043, .13, .022, .02, .061,
         .07, .0015, .0077, .04, .024, .067, .075,
@@ -257,61 +300,43 @@ static const double english_frequencies[] = {
         .024, .0015, .02, .00074, .1716
 }; // a, b, c, d ... <space>
 
-unsigned char* char_frequency(const unsigned char *bytestring, size_t numBytes, size_t *outBytes) {
+/**
+ * Calculates the Chi^2 score for a bytestring compared to
+ * character frequencies in english ASCII text.
+ * @param bytestring the bytestring to score
+ * @param numBytes the number of bytes to score
+ * @return the string's chi^2 score.
+ */
+double score_string(const unsigned char *bytestring, size_t numBytes) {
     if (numBytes == 0) {
-        return NULL;
+        return -1;
     }
 
-    unsigned char freq[256] = {0};
-    unsigned char chars[256] = {0};
-
-    for (int i = 0; i < 256; i++) {
-        chars[i] = (unsigned char) i;
-    }
-
-    for (int i = 0; i < numBytes; i++) {
-        freq[tolower(bytestring[i])]++;
-    }
-
-    *outBytes += freq[0] > 0;
-    for (int i = 1; i < 256; i++) {
-        if (freq[i] > 0) {
-            *outBytes += 1;
-        }
-        int j = i;
-        while (j > 0 && freq[j-1] < freq[j]) {
-            unsigned char tmp = freq[j];
-            unsigned char tmp2 = chars[j];
-            freq[j] = freq[j-1];
-            chars[j] = chars[j-1];
-            freq[j-1] = tmp;
-            chars[j-1] = tmp2;
-            j -= 1;
+    int freq[27] = {0}, ignored = 0, i;
+    for (i = 0; i < numBytes; i++) {
+        unsigned char c = bytestring[i];
+        if (isalpha(c)) {
+            freq[tolower(c) - 97]++;
+        } else if (isspace(c)) {
+            freq[26]++;
+        } else {
+            ignored++;
         }
     }
 
-    unsigned char *output = calloc(*outBytes + 1, sizeof(unsigned char));
-    if (output == NULL) {
-        return NULL;
+    if (ignored > numBytes / 3) {
+        return -1;
     }
 
-    int j = 0;
-    for (int i = 0; i < *outBytes; i++) {
-        if (!isspace(chars[i]) && !ispunct(chars[i])) {
-            output[j] = chars[i];
-            j += 1;
-        }
+    double score = 0;
+    int len = (int)numBytes - ignored;
+    for (i = 0; i < 27; i++) {
+        int obs = freq[i];
+        double expected = len * english_frequencies[i];
+        double difference = obs - expected;
+        score += difference * difference / expected;
     }
-    *outBytes = (size_t) j;
-    return output;
-}
-
-char single_byte_xor_cipher(const char *hexstring) {
-    size_t len = strlen(hexstring);
-    if (len == 0) {
-        return '\0';
-    }
-
+    return score;
 }
 
 int challenge_one() {
@@ -393,12 +418,40 @@ int challenge_two() {
 }
 
 int challenge_three() {
+    char *hexString = "1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736";
+    size_t len = strlen(hexString);
+    double scores[256] = {0};
+    scores[255] = UINT32_MAX;
+    int minScore = 255;
 
-    size_t numBytes = 0;
-    unsigned char testString[] = {'T','h','i','s',' ', 'i', 's', ' ','m', 'y', ' ', 't', 'e', 's', 't', ' ', 's', 't', 'r', 'i', 'n', 'g', '.'};
-    unsigned char *freqString = char_frequency(testString, 23, &numBytes);
-    printf("%s\n", freqString);
+    for (int i = 0; i < 256; i++) {
+        unsigned char *xored;
+        size_t outLen = 0;
+        if ((xored = single_byte_xor_hex(hexString, (unsigned char) i, &outLen)) == NULL) {
+            continue;
+        }
+        if (outLen == 0 || outLen != len / 2) {
+            continue;
+        }
 
+        double score = score_string(xored, outLen);
+        if (score == -1) {
+            free(xored);
+            continue;
+        }
+        scores[i] = score;
+        minScore = score < scores[minScore] ? i : minScore;
+        free(xored);
+    }
+
+    printf("Likely key: %c\n", (char) minScore);
+    unsigned char *likelyMsg;
+    size_t outLen = 0;
+    if ((likelyMsg = single_byte_xor_hex(hexString, (unsigned char) minScore, &outLen)) == NULL) {
+        return 1;
+    }
+    printf("Likely message: %s\n", likelyMsg);
+    free(likelyMsg);
     return 0;
 }
 

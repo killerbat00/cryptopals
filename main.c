@@ -195,7 +195,6 @@ unsigned char* base642bytes(const char* base64string, size_t* numBytes) {
     ({ __typeof__ (a) _a = (a); \
         __typeof__ (b) _b = (b); \
        _a < _b ? _a : _b; })
-
 /**
  * XORs two bytestrings together, returning the result (which must be free'd).
  * If one bytestring is smaller than the other, repeating-key XOR is used.
@@ -229,6 +228,13 @@ unsigned char* xor_bytes(const unsigned char *b1, size_t b1len, const unsigned c
     return xored;
 }
 
+/**
+ * XORs two equivalent-length hexstrings together returning
+ * the resulting hex-encoded string (which must be free'd).
+ * @param h1 hexstring to XOR
+ * @param h2 hexstring to XOR
+ * @return hex-encoded string of h1 XOR h2
+ */
 char* fixed_xor_hex(const char *h1, const char *h2) {
     size_t h1len = strlen(h1);
     size_t h2len = strlen(h2);
@@ -269,6 +275,13 @@ char* fixed_xor_hex(const char *h1, const char *h2) {
     return output;
 }
 
+/**
+ * XORs a single character against every byte of a hexstring.
+ * @param h1 hexstring
+ * @param h2 char to XOR
+ * @param outLen length of the XOR'd bytes
+ * @return bytestring of h1 XOR h2
+ */
 unsigned char* single_byte_xor_hex(const char *h1, const unsigned char h2, size_t *outLen) {
     size_t h1len = strlen(h1);
 
@@ -324,7 +337,7 @@ double score_string(const unsigned char *bytestring, size_t numBytes) {
         }
     }
 
-    if (ignored > numBytes / 4) { // spaces have a 20% probability
+    if (ignored >= numBytes / 4) { // skip if we ignored a quarter or more of the bytes
         return -1;
     }
 
@@ -334,11 +347,55 @@ double score_string(const unsigned char *bytestring, size_t numBytes) {
         int obs = freq[i];
         double expected = len * english_frequencies[i];
         double difference = obs - expected;
-        score += difference * difference / expected;
+        score += (difference * difference / expected);
     }
     return score;
 }
 
+/**
+ * For each of the 256 single-byte characters, determines the
+ * probability the hexstring was XOR'd against that byte by XOR'ing the
+ * hexstring against the byte, then calculating the chi^2 score
+ * compared to english letter sentence frequency.
+ * @param hexString hexstring to check
+ * @param minScoreVal output of the minimum chi^2 score found
+ * @return the (integer representation) byte that was likely used as the XOR key
+ */
+int probability_was_xored(const char *hexString, double *minScoreVal) {
+    size_t len = strlen(hexString);
+    double scores[256] = {0};
+    int minScore = 256;
+
+    for (int i = 0; i < 256; i++) {
+        unsigned char *xored;
+        size_t outLen = 0;
+        if ((xored = single_byte_xor_hex(hexString, (unsigned char) i, &outLen)) == NULL) {
+            continue;
+        }
+        if (outLen == 0 || outLen != len / 2) {
+            free(xored);
+            continue;
+        }
+
+        double score = score_string(xored, outLen);
+        if (score == -1 || score == 0) {
+            free(xored);
+            continue;
+        }
+        scores[i] = score;
+        minScore = minScore > 255 ? i : score < scores[minScore] ? i : minScore;
+        free(xored);
+    }
+    if (minScore == 256) {
+        return -1;
+    }
+    *minScoreVal = scores[minScore];
+    return minScore;
+}
+
+/**
+ * https://cryptopals.com/sets/1/challenges/1
+ */
 int challenge_one() {
     char *hexstring = "49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d";
     char *b64output = "SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t";
@@ -398,6 +455,9 @@ int challenge_one() {
     return 0;
 }
 
+/**
+ * https://cryptopals.com/sets/1/challenges/2
+ */
 int challenge_two() {
     char *a = "1c0111001f010100061a024b53535009181c";
     char *b = "686974207468652062756c6c277320657965";
@@ -417,31 +477,15 @@ int challenge_two() {
     return 0;
 }
 
+/**
+ * https://cryptopals.com/sets/1/challenges/3
+ */
 int challenge_three() {
     char *hexString = "1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736";
-    size_t len = strlen(hexString);
-    double scores[256] = {0};
-    scores[255] = UINT32_MAX;
-    int minScore = 255;
-
-    for (int i = 0; i < 256; i++) {
-        unsigned char *xored;
-        size_t outLen = 0;
-        if ((xored = single_byte_xor_hex(hexString, (unsigned char) i, &outLen)) == NULL) {
-            continue;
-        }
-        if (outLen == 0 || outLen != len / 2) {
-            continue;
-        }
-
-        double score = score_string(xored, outLen);
-        if (score == -1) {
-            free(xored);
-            continue;
-        }
-        scores[i] = score;
-        minScore = score < scores[minScore] ? i : minScore;
-        free(xored);
+    double minScoreVal;
+    int minScore = probability_was_xored(hexString, &minScoreVal);
+    if (minScore == -1) {
+        return 1;
     }
 
     if ((char) minScore != 'X') {
@@ -461,6 +505,87 @@ int challenge_three() {
     return 0;
 }
 
+/**
+ * https://cryptopals.com/sets/1/challenges/4
+ */
+int challenge_four() {
+    FILE *fp;
+    char line[62];
+    int lc = 0;
+    char **lines;
+    double overallMinScore = 999999999999999;
+    int minScoreIdx = 327;
+    unsigned char minkey;
+
+    if ((fp = fopen("/home/ddnull/Documents/dev/cryptopals/encoded_strings", "rb")) == NULL) {
+        return 1;
+    }
+
+    if ((lines = calloc(327, sizeof(char *))) == NULL) {
+        return 1;
+    }
+    for (int i = 0; i < 327; i++) {
+        if ((lines[i] = calloc(60 + 1, sizeof(char))) == NULL) {
+            for (int j = 0; j < i; j++) {
+                free(lines[j]);
+            }
+            return 1;
+        }
+    }
+
+    while (fgets(line, sizeof(char) * 62, fp) != NULL) {
+        size_t lineLen = strlen(line);
+        memcpy(lines[lc], line, lineLen-1);
+        lines[lc][lineLen - 1] = '\0';
+        lc++;
+    }
+    fclose(fp);
+
+    for (int i = 0; i < 327; i++) {
+        double minScoreVal;
+        int s = probability_was_xored(lines[i], &minScoreVal);
+        if (s == -1) {
+            continue;
+        }
+        if (minScoreVal < overallMinScore) {
+            overallMinScore = minScoreVal;
+            minScoreIdx = i;
+            minkey = (unsigned char) s;
+        }
+    }
+
+    int ret = 0;
+    if (minScoreIdx == 327) {
+        ret = 1;
+        goto cleanup;
+    }
+
+    if (minkey != '5') {
+        ret = 1;
+        goto cleanup;
+    }
+
+    size_t outBytes;
+    unsigned char *decoded = single_byte_xor_hex(lines[minScoreIdx], minkey, &outBytes);
+    if (decoded == NULL) {
+        ret = 1;
+        goto cleanup;
+    }
+    if (strcmp((char *)decoded, "Now that the party is jumping\n") != 0) {
+        ret = 1;
+        free(decoded);
+        goto cleanup;
+    }
+    free(decoded);
+
+cleanup:
+    for (int i = 0; i < 327; i++) {
+        free(lines[i]);
+    }
+    free(lines);
+    return ret;
+}
+
 int main(void) {
     if (challenge_one() != 0) {
         printf("Challenge one failed.\n");
@@ -474,6 +599,11 @@ int main(void) {
 
     if (challenge_three() != 0) {
         printf("Challenge three failed.\n");
+        return 1;
+    }
+
+    if (challenge_four() != 0) {
+        printf("Challenge four failed.\n");
         return 1;
     }
     return 0;

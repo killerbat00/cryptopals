@@ -1,8 +1,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdio.h>
 #include "xor.h"
 #include "hex.h"
+#include "b64.h"
 
 #define max(a,b) \
     ({ __typeof__ (a) _a = (a); \
@@ -209,4 +211,122 @@ int probability_was_xored(const char *hexString, double *minScoreVal) {
     }
     *minScoreVal = scores[minScore];
     return minScore;
+}
+
+/**
+ * Calculates the bitwise Hamming distance between two equal-length
+ * strings. Inspiration from: https://en.wikipedia.org/wiki/Hamming_distance
+ * @param s1
+ * @param s2
+ * @param numBytes
+ * @return the bitwise Hamming distance between two strings
+ */
+int hamming_distance(unsigned const char *s1, unsigned const char *s2, size_t numBytes) {
+    if (numBytes == 0) {
+        return -1;
+    }
+
+    int dist = 0;
+    for (int i = 0; i < numBytes - 1; i++) {
+        int d = 0;
+        for (unsigned int val = s1[i] ^ s2[i]; val > 0; ++d) {
+            val = val & (val - 1);
+        }
+        dist += d;
+    }
+
+    return dist;
+}
+
+/**
+ * Determines the average hamming distance between 2-4 keysize
+ * length blocks of bytes.
+ * @param bytes the encrypted bytes
+ * @param numBytes number of encrypted bytes
+ * @param keysize the keysize to calculate average hamming distance for
+ * @return the average hamming distance for the keysize
+ */
+double find_avg_keysize_ham_dist(unsigned char *bytes, size_t numBytes, int keysize) {
+    if (keysize < 2) {
+        return -1;
+    }
+
+    int availBlocks = (int) numBytes / keysize, numBlocks;
+    switch (availBlocks) {
+        case 0:
+        case 1:
+            return -1;
+        case 2:
+            numBlocks = 2;
+            break;
+        case 3:
+            numBlocks = 3;
+            break;
+        default:
+            numBlocks = 4;
+    }
+
+    unsigned char blocks[numBlocks][keysize + 1];
+    for (int i = 0; i < numBlocks; i++) {
+        memcpy(blocks[i], bytes, keysize);
+        bytes += keysize;
+    }
+
+    double totDist;
+    int goodBlocks = 0;
+    for (int i = 1; i < numBlocks; i++) {
+        int d = hamming_distance(blocks[i], blocks[i-1], keysize);
+        if (d != -1) {
+            goodBlocks += 1;
+            totDist += (double) d / keysize;
+        }
+    }
+
+    if (goodBlocks == 0) {
+        return -1;
+    }
+
+    return totDist / goodBlocks;
+}
+
+/**
+ * Determines the most likely size of a repeating-key XOR key
+ * that was used to encrypt a bytestring.
+ * This is the keysize with the smallest average hamming distance
+ * between keysize length blocks of the bytestring.
+ * @param bytes the encrypted bytes
+ * @param numBytes number of encrypted bytes
+ * @param startKeysize starting keysize
+ * @param endKeysize ending keysize
+ * @return the most likely keysize used for a repeating-key XOR that encrypted a bytestring
+ */
+int find_likely_keysize(unsigned char *bytes, size_t numBytes, int startKeysize, int endKeysize) {
+    if (startKeysize > endKeysize) {
+        return -1;
+    }
+    if (startKeysize < 2) {
+        startKeysize = 2;
+    }
+    if (endKeysize > 40) {
+        endKeysize = 40;
+    }
+    double minDistance = 999999999999999;
+    int minKeysize = -1;
+
+    int i = 0;
+    for (int ks = startKeysize; ks <= endKeysize; ks++) {
+        double d = find_avg_keysize_ham_dist(bytes, numBytes, ks);
+        if (d > 0) {
+            if (d < minDistance) {
+                minDistance = d;
+                minKeysize = ks;
+            }
+        }
+        i++;
+    }
+    if (minKeysize == -1) {
+        return -1;
+    }
+
+    return minKeysize;
 }

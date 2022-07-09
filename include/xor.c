@@ -184,7 +184,7 @@ double score_string(const unsigned char *bytestring, size_t numBytes) {
 int probability_was_xored(const char *hexString, double *minScoreVal) {
     size_t len = strlen(hexString);
     double scores[256] = {0};
-    int minScore = 256;
+    int minScore = -1;
 
     for (int i = 0; i < 256; i++) {
         unsigned char *xored;
@@ -203,10 +203,10 @@ int probability_was_xored(const char *hexString, double *minScoreVal) {
             continue;
         }
         scores[i] = score;
-        minScore = minScore > 255 ? i : score < scores[minScore] ? i : minScore;
+        minScore = minScore == -1 || score < scores[minScore] ? i : minScore;
         free(xored);
     }
-    if (minScore == 256) {
+    if (minScore == -1) {
         return -1;
     }
     *minScoreVal = scores[minScore];
@@ -227,7 +227,7 @@ int hamming_distance(unsigned const char *s1, unsigned const char *s2, size_t nu
     }
 
     int dist = 0;
-    for (int i = 0; i < numBytes - 1; i++) {
+    for (int i = 0; i < numBytes; i++) {
         int d = 0;
         for (unsigned int val = s1[i] ^ s2[i]; val > 0; ++d) {
             val = val & (val - 1);
@@ -251,42 +251,18 @@ double find_avg_keysize_ham_dist(unsigned char *bytes, size_t numBytes, int keys
         return -1;
     }
 
-    int availBlocks = (int) numBytes / keysize, numBlocks;
-    switch (availBlocks) {
-        case 0:
-        case 1:
-            return -1;
-        case 2:
-            numBlocks = 2;
-            break;
-        case 3:
-            numBlocks = 3;
-            break;
-        default:
-            numBlocks = 4;
-    }
-
-    unsigned char blocks[numBlocks][keysize + 1];
-    for (int i = 0; i < numBlocks; i++) {
-        memcpy(blocks[i], bytes, keysize);
-        bytes += keysize;
-    }
-
-    double totDist;
-    int goodBlocks = 0;
-    for (int i = 1; i < numBlocks; i++) {
-        int d = hamming_distance(blocks[i], blocks[i-1], keysize);
-        if (d != -1) {
-            goodBlocks += 1;
-            totDist += (double) d / keysize;
-        }
-    }
-
-    if (goodBlocks == 0) {
+    int availBlocks = (int) numBytes / keysize;
+    if (availBlocks < 2) {
         return -1;
     }
 
-    return totDist / goodBlocks;
+    double totDist = 0;
+    bytes += keysize;
+    for (int i = 1; i < availBlocks; i++) {
+        totDist += (double) hamming_distance(bytes+keysize, bytes, keysize) / keysize;
+        bytes += keysize;
+    }
+    return totDist / availBlocks;
 }
 
 /**
@@ -310,34 +286,30 @@ int find_likely_keysize(unsigned char *bytes, size_t numBytes, int startKeysize,
     int diff = endKeysize - startKeysize;
     double distances[diff+2];
     int minDistance = -1;
+    int keysize = 0;
 
     int i = 0;
     for (int ks = startKeysize; ks <= endKeysize; ks++) {
         double d = find_avg_keysize_ham_dist(bytes, numBytes, ks);
-        if (d > 0) {
-            distances[i] = d;
-            if (minDistance == -1 || d < distances[minDistance]) {
-                minDistance = i;
-            }
+        distances[i] = d;
+        if (minDistance == -1 || d < distances[minDistance]) {
+            minDistance = i;
+            keysize = ks;
         }
-    }
-    if (minDistance == -1) {
-        return -1;
+        i++;
     }
 
-    return distances[minDistance + startKeysize];
+    return keysize;
 }
 
-unsigned char *transpose_and_solve(const unsigned char *bytes, size_t numBytes, int keysize) {
+char *transpose_and_solve(const unsigned char *bytes, size_t numBytes, int keysize) {
     int numBlocks = (int) numBytes / keysize;
     unsigned char transposed_blocks[keysize][numBlocks + (numBytes % numBlocks)];
 
     int block_index = 0;
-    for (int i = 0; i < numBytes; i += keysize) {
+    for (int i = 0; i < numBytes-keysize; i += keysize) {
         for (int j = i; j < i+keysize; j++) {
-            if (j < numBytes) {
-                transposed_blocks[j % keysize][block_index] = bytes[j];
-            }
+            transposed_blocks[j % keysize][block_index] = bytes[j];
         }
         block_index += 1;
     }

@@ -265,15 +265,10 @@ int challenge_six() {
     }
 
     int keysize = find_likely_keysize(bytes, numBytes, 2, 40);
-    unsigned char *key = transpose_and_solve(bytes, numBytes, keysize);
+    char *key = transpose_and_solve(bytes, numBytes, keysize);
     if (key != NULL) {
-        printf("Likely Key: %s\n", key);
-
-        size_t outSize;
-        unsigned char *xored = xor_bytes(bytes, numBytes, key, keysize, &outSize);
-        if (xored != NULL) {
-            printf("Content?:\n%s\n", xored);
-            free(xored);
+        if (strcmp(key, "Terminator X: Bring the noise") != 0) {
+            return 1;
         }
         free(key);
     }

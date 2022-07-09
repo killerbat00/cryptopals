@@ -5,6 +5,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/mman.h>
+#include <unistd.h>
 #include "include/hex.h"
 #include "include/b64.h"
 #include "include/xor.h"
@@ -254,6 +255,7 @@ int challenge_six() {
 
     size = s.st_size;
     char *b64bytes = mmap(0, size, PROT_READ, MAP_PRIVATE, fd, 0);
+    close(fd);
     if (b64bytes == MAP_FAILED) {
         return 1;
     }

@@ -257,7 +257,6 @@ double find_avg_keysize_ham_dist(unsigned char *bytes, size_t numBytes, int keys
     }
 
     double totDist = 0;
-    bytes += keysize;
     for (int i = 1; i < availBlocks; i++) {
         totDist += (double) hamming_distance(bytes+keysize, bytes, keysize) / keysize;
         bytes += keysize;
@@ -304,7 +303,10 @@ int find_likely_keysize(unsigned char *bytes, size_t numBytes, int startKeysize,
 
 char *transpose_and_solve(const unsigned char *bytes, size_t numBytes, int keysize) {
     int numBlocks = (int) numBytes / keysize;
-    unsigned char transposed_blocks[keysize][numBlocks + (numBytes % numBlocks)];
+    unsigned char **transposed_blocks = calloc(keysize, sizeof(unsigned char *));
+    for (int i = 0; i < keysize; i++) {
+        transposed_blocks[i] = calloc(numBlocks + (numBytes % numBlocks), sizeof(char));
+    }
 
     int block_index = 0;
     for (int i = 0; i < numBytes-keysize; i += keysize) {
@@ -322,6 +324,11 @@ char *transpose_and_solve(const unsigned char *bytes, size_t numBytes, int keysi
         finalKey[i] = (char) key;
         free(hex);
     }
+
+    for (int i = 0; i < keysize; i++) {
+        free(transposed_blocks[i]);
+    }
+    free(transposed_blocks);
 
     return finalKey;
 }

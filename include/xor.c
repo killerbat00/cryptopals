@@ -293,7 +293,7 @@ double find_avg_keysize_ham_dist(unsigned char *bytes, size_t numBytes, int keys
  * Determines the most likely size of a repeating-key XOR key
  * that was used to encrypt a bytestring.
  * This is the keysize with the smallest average hamming distance
- * between keysize length blocks of the bytestring.
+ * between 2-4 keysize length blocks of the bytestring.
  * @param bytes the encrypted bytes
  * @param numBytes number of encrypted bytes
  * @param startKeysize starting keysize
@@ -304,29 +304,52 @@ int find_likely_keysize(unsigned char *bytes, size_t numBytes, int startKeysize,
     if (startKeysize > endKeysize) {
         return -1;
     }
-    if (startKeysize < 2) {
-        startKeysize = 2;
-    }
-    if (endKeysize > 40) {
-        endKeysize = 40;
-    }
-    double minDistance = 999999999999999;
-    int minKeysize = -1;
+
+    startKeysize = max(startKeysize, 2);
+    endKeysize = min(endKeysize, 40);
+    int diff = endKeysize - startKeysize;
+    double distances[diff+2];
+    int minDistance = -1;
 
     int i = 0;
     for (int ks = startKeysize; ks <= endKeysize; ks++) {
         double d = find_avg_keysize_ham_dist(bytes, numBytes, ks);
         if (d > 0) {
-            if (d < minDistance) {
-                minDistance = d;
-                minKeysize = ks;
+            distances[i] = d;
+            if (minDistance == -1 || d < distances[minDistance]) {
+                minDistance = i;
             }
         }
-        i++;
     }
-    if (minKeysize == -1) {
+    if (minDistance == -1) {
         return -1;
     }
 
-    return minKeysize;
+    return distances[minDistance + startKeysize];
+}
+
+unsigned char *transpose_and_solve(const unsigned char *bytes, size_t numBytes, int keysize) {
+    int numBlocks = (int) numBytes / keysize;
+    unsigned char transposed_blocks[keysize][numBlocks + (numBytes % numBlocks)];
+
+    int block_index = 0;
+    for (int i = 0; i < numBytes; i += keysize) {
+        for (int j = i; j < i+keysize; j++) {
+            if (j < numBytes) {
+                transposed_blocks[j % keysize][block_index] = bytes[j];
+            }
+        }
+        block_index += 1;
+    }
+    char *finalKey = calloc(keysize + 1, sizeof(char));
+    for (int i = 0; i < keysize; i++) {
+        size_t nb = i == 0 ? numBlocks + (numBytes % numBlocks) : numBlocks;
+        char *hex = bytes2hex(transposed_blocks[i], nb);
+        double ms;
+        int key = probability_was_xored(hex, &ms);
+        finalKey[i] = (char) key;
+        free(hex);
+    }
+
+    return finalKey;
 }

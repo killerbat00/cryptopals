@@ -96,6 +96,28 @@ char* fixed_xor_hex(const char *h1, const char *h2) {
 }
 
 /**
+ * XORs a single character against every byte of a byte string.
+ * @param byteString
+ * @param numBytes the number of bytes in the byte string
+ * @param h2 the byte to XOR with
+ * @param outLen the output length of the xored bytes
+ * @return byte string of bytes XOR h2
+ */
+unsigned char *single_byte_xor_byte(const unsigned char *byteString, size_t numBytes, const unsigned char h2, size_t *outLen) {
+    if (numBytes == 0) {
+        return NULL;
+    }
+
+    unsigned char *xored = xor_bytes(byteString, numBytes, &h2, 1, outLen);
+    if (xored == NULL || numBytes != *outLen) {
+        *outLen = 0;
+        return NULL;
+    }
+
+    return xored;
+}
+
+/**
  * XORs a single character against every byte of a hexstring.
  * @param h1 hexstring
  * @param h2 char to XOR
@@ -115,15 +137,7 @@ unsigned char* single_byte_xor_hex(const char *h1, const unsigned char h2, size_
         return NULL;
     }
 
-    unsigned char *xored = xor_bytes(h1bytes, olen, &h2, 1, outLen);
-    if (xored == NULL || olen != *outLen) {
-        *outLen = 0;
-        free(h1bytes);
-        return NULL;
-    }
-
-    free(h1bytes);
-    return xored;
+    return single_byte_xor_byte(h1bytes, olen, h2, outLen);
 }
 
 static const double english_frequencies[] = {
@@ -198,7 +212,7 @@ int probability_was_xored(const char *hexString, double *minScoreVal) {
         }
 
         double score = score_string(xored, outLen);
-        if (score == -1 || score == 0) {
+        if (score <= 0) {
             free(xored);
             continue;
         }
@@ -301,6 +315,14 @@ int find_likely_keysize(unsigned char *bytes, size_t numBytes, int startKeysize,
     return keysize;
 }
 
+/**
+ * Transposes bytes in order to solve the keysize-length XOR key
+ * that was used to encrypt the given bytes.
+ * @param bytes the encrypted bytes
+ * @param numBytes the number of encrypted bytes
+ * @param keysize the guessed keysize
+ * @return the key used to encrypt the bytes via repeating-key XOR
+ */
 char *transpose_and_solve(const unsigned char *bytes, size_t numBytes, int keysize) {
     int numBlocks = (int) numBytes / keysize;
     unsigned char **transposed_blocks = calloc(keysize, sizeof(unsigned char *));

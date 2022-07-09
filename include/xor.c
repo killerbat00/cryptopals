@@ -137,7 +137,9 @@ unsigned char* single_byte_xor_hex(const char *h1, const unsigned char h2, size_
         return NULL;
     }
 
-    return single_byte_xor_byte(h1bytes, olen, h2, outLen);
+    unsigned char *xored = single_byte_xor_byte(h1bytes, olen, h2, outLen);
+    free(h1bytes);
+    return xored;
 }
 
 static const double english_frequencies[] = {

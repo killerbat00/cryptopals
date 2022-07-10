@@ -9,6 +9,7 @@
 #include "include/hex.h"
 #include "include/b64.h"
 #include "include/xor.h"
+#include "include/aes.h"
 
 /**
  * https://cryptopals.com/sets/1/challenges/1
@@ -233,35 +234,41 @@ int challenge_five() {
     return 0;
 }
 
+/**
+ * mmaps a file and returns the pointer
+ * @param filename the filename to mmap
+ * @return the pointer to the mmap'd file, must be free'd. NULL on error
+ */
+unsigned char *mmap_file(char *filename, size_t *size) {
+    int fd;
+    struct stat s;
+
+    if ((fd = open(filename, O_RDONLY)) == -1)
+        return NULL;
+
+    if (fstat(fd, &s) == -1)
+        return NULL;
+
+    *size = s.st_size;
+    unsigned char *outBytes = mmap(0, *size, PROT_READ, MAP_PRIVATE, fd, 0);
+    close(fd);
+
+    if (outBytes == MAP_FAILED)
+        return NULL;
+
+    return outBytes;
+}
+
 /*
  * https://cryptopals.com/sets/1/challenges/6
  */
 int challenge_six() {
-    int fd;
-    struct stat s;
-    int status;
     size_t size;
     char *filename = "/home/ddnull/Documents/dev/cryptopals/challenge_six";
 
-    fd = open(filename, O_RDONLY);
-    if (fd == -1) {
-        return 1;
-    }
-
-    status = fstat(fd, &s);
-    if (status == -1) {
-        return 1;
-    }
-
-    size = s.st_size;
-    char *b64bytes = mmap(0, size, PROT_READ, MAP_PRIVATE, fd, 0);
-    close(fd);
-    if (b64bytes == MAP_FAILED) {
-        return 1;
-    }
-
+    unsigned char *b64bytes = mmap_file(filename, &size);
     size_t numBytes;
-    unsigned char *bytes = base642bytes(b64bytes, &numBytes);
+    unsigned char *bytes = base642bytes((char *) b64bytes, &numBytes);
     if (bytes == NULL) {
         return 1;
     }
@@ -278,6 +285,28 @@ int challenge_six() {
     free(bytes);
     munmap(b64bytes, size);
 
+    return 0;
+}
+
+int challenge_seven() {
+    size_t size;
+    char *filename = "/home/ddnull/Documents/dev/cryptopals/challenge_seven_bytes";
+
+    //unsigned char *b64bytes = mmap_file(filename, &size);
+    unsigned char *bytes = mmap_file(filename, &size);
+    //size_t numBytes;
+    //unsigned char *bytes = base642bytes((char *) b64bytes, &numBytes);
+    if (bytes == NULL)
+        return 1;
+
+    int outLen;
+    unsigned char *decoded = decrypt_aes_128_ecb(bytes, size, "YELLOW SUBMARINE", &outLen);
+    //fwrite(decoded, 1, outLen, stdout);
+
+    free(decoded);
+    //free(bytes);
+    //munmap(b64bytes, size);
+    munmap(bytes, size);
     return 0;
 }
 
@@ -309,6 +338,11 @@ int main(void) {
 
     if (challenge_six() != 0) {
         printf("Challenge six failed.\n");
+        return 1;
+    }
+
+    if (challenge_seven() != 0) {
+        printf("Challenge seven failed.\n");
         return 1;
     }
 

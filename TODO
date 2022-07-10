@@ -1,0 +1,2 @@
+BUG
+- there's an encoding/decoding bug with files that are b64 lines. Losing ~10 characters at the end.

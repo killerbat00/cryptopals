@@ -270,6 +270,7 @@ int challenge_six() {
     size_t numBytes;
     unsigned char *bytes = base642bytes((char *) b64bytes, &numBytes);
     if (bytes == NULL) {
+        munmap(b64bytes, size);
         return 1;
     }
 
@@ -277,14 +278,16 @@ int challenge_six() {
     char *key = transpose_and_solve(bytes, numBytes, keysize);
     if (key != NULL) {
         if (strcmp(key, "Terminator X: Bring the noise") != 0) {
+            free(bytes);
+            free(key);
+            munmap(b64bytes, size);
             return 1;
         }
-        free(key);
     }
 
     free(bytes);
+    free(key);
     munmap(b64bytes, size);
-
     return 0;
 }
 

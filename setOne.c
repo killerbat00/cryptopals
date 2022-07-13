@@ -293,23 +293,24 @@ int challenge_six() {
 
 int challenge_seven() {
     size_t size;
-    char *filename = "/home/ddnull/Documents/dev/cryptopals/challenge_seven_bytes";
+    char *filename = "/home/ddnull/Documents/dev/cryptopals/challenge_seven";
 
-    //unsigned char *b64bytes = mmap_file(filename, &size);
-    unsigned char *bytes = mmap_file(filename, &size);
-    //size_t numBytes;
-    //unsigned char *bytes = base642bytes((char *) b64bytes, &numBytes);
-    if (bytes == NULL)
+    unsigned char *b64bytes = mmap_file(filename, &size);
+    size_t numBytes;
+    unsigned char *bytes = base642bytes((char *) b64bytes, &numBytes);
+    if (bytes == NULL) {
+        munmap(b64bytes, size);
         return 1;
+    }
 
     int outLen;
-    unsigned char *decoded = decrypt_aes_128_ecb(bytes, size, "YELLOW SUBMARINE", &outLen);
-    //fwrite(decoded, 1, outLen, stdout);
+    unsigned char *key = (unsigned char *) "YELLOW SUBMARINE";
+    unsigned char *decoded = decrypt_aes_128_ecb(bytes, (int) size, key, &outLen);
+    fwrite(decoded, 1, numBytes, stdout);
 
     free(decoded);
-    //free(bytes);
-    //munmap(b64bytes, size);
-    munmap(bytes, size);
+    free(bytes);
+    munmap(b64bytes, size);
     return 0;
 }
 

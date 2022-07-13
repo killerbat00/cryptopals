@@ -12,7 +12,6 @@ unsigned char *decrypt_aes_128_ecb(const unsigned char *ciphertext, int numBytes
 
     EVP_CipherInit(ctx, EVP_aes_128_ecb(), key, NULL, 0);
     EVP_DecryptUpdate(ctx, outdigest, outlen, ciphertext, numBytes);
-    fwrite(outdigest, 1, *outlen, stdout);
 
     unsigned char *out = calloc(*outlen, sizeof(unsigned char));
     memcpy(out, outdigest, *outlen);

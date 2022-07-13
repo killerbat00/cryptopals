@@ -204,7 +204,7 @@ cleanup:
     return ret;
 }
 
-/*
+/**
  * https://cryptopals.com/sets/1/challenges/5
  */
 int challenge_five() {
@@ -259,7 +259,7 @@ unsigned char *mmap_file(char *filename, size_t *size) {
     return outBytes;
 }
 
-/*
+/**
  * https://cryptopals.com/sets/1/challenges/6
  */
 int challenge_six() {
@@ -291,6 +291,9 @@ int challenge_six() {
     return 0;
 }
 
+/**
+ * https://cryptopals.com/sets/1/challenges/7
+ */
 int challenge_seven() {
     size_t size;
     char *filename = "/home/ddnull/Documents/dev/cryptopals/challenge_seven";
@@ -298,14 +301,14 @@ int challenge_seven() {
     unsigned char *b64bytes = mmap_file(filename, &size);
     size_t numBytes;
     unsigned char *bytes = base642bytes((char *) b64bytes, &numBytes);
+    printf("%ld\n",numBytes);
     if (bytes == NULL) {
         munmap(b64bytes, size);
         return 1;
     }
 
-    int outLen;
     unsigned char *key = (unsigned char *) "YELLOW SUBMARINE";
-    unsigned char *decoded = decrypt_aes_128_ecb(bytes, (int) size, key, &outLen);
+    unsigned char *decoded = decrypt_aes_128_ecb(bytes, (int) size, key);
     fwrite(decoded, 1, numBytes, stdout);
 
     free(decoded);

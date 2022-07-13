@@ -6,9 +6,8 @@
  * @param ciphertext the ciphertext to decrypt
  * @param numBytes the number of bytes in the ciphertext
  * @param key the encryption key
- * @param outlen the output length
  * @return decrypted bytes
  */
-unsigned char *decrypt_aes_128_ecb(const unsigned char *ciphertext, int numBytes, const unsigned char *key, int *outlen);
+unsigned char *decrypt_aes_128_ecb(const unsigned char *ciphertext, int numBytes, const unsigned char *key);
 
 #endif //CRYPTOPALS_AES_H

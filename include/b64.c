@@ -7,9 +7,9 @@
 #define B64EQUALS     65
 #define B64INVALID    66
 
-static const unsigned char table[65] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+static const char table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 static const unsigned char decode[] = {
-        66,66,66,66,66,66,66,66,66,66,64,66,66,66,66,66,66,66,66,66,66,66,66,66,66,
+        66,66,66,66,66,66,66,66,66,64,64,66,66,64,66,66,66,66,66,66,66,66,66,66,66,
         66,66,66,66,66,66,66,66,66,66,66,66,66,66,66,66,66,66,62,66,66,66,63,52,53,
         54,55,56,57,58,59,60,61,66,66,66,65,66,66,66, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
         10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,66,66,66,66,66,66,26,27,28,
@@ -23,48 +23,85 @@ static const unsigned char decode[] = {
 };
 
 /**
+ * Size of the b64 encoded data.
+ * @param inlen length of input
+ * @return Size of the b64 encoded data
+ */
+size_t b64_size(size_t inlen) {
+    size_t ret;
+
+    ret = inlen;
+    if (inlen % 3 != 0)
+        ret += 3 - (inlen % 3);
+    ret /= 3;
+    ret *= 4;
+    return ret;
+}
+
+/**
+ * Number of bytes that will be decoded from a b64 string.
+ * @param b64 encoded string
+ * @return Number of bytes that will be decoded from a b64 string.
+ */
+size_t byte_size(const char *b64string) {
+    size_t len;
+    size_t ret;
+    size_t i;
+    if (b64string == NULL)
+        return -1;
+
+    len = strlen(b64string);
+    ret = len / 4 * 3;
+    for (i=len; i -->0; ) {
+        if (b64string[i] == '=') {
+            ret--;
+        } else {
+            break;
+        }
+    }
+    return ret;
+}
+
+/**
  * Encodes an array of bytes to a base64-encoded string.
  * @param bytes the bytes to base64 encode
  * @param numBytes the number of bytes to encode
  * @return base64-encoded string of bytes
  */
 char* bytes2base64(const unsigned char* bytes, size_t numBytes) {
-    unsigned char *out, *pos;
-    const unsigned char *end, *in;
+    char *output;
+    size_t olen;
+    size_t i;
+    size_t j;
+    size_t v;
 
-    size_t olen = (4*((numBytes + 2) / 3));
-    if (olen < numBytes) {
+    if (bytes == NULL || numBytes == 0)
         return NULL;
-    }
 
-    char* output = calloc(olen + 1, sizeof(char));
-    if (output == NULL) {
+    olen = b64_size(numBytes);
+    output = calloc(olen + 1, sizeof(char));
+    if (output == NULL)
         return NULL;
-    }
     output[olen] = '\0';
 
-    out = (unsigned char *)&output[0];
-    end = bytes + numBytes;
-    in = bytes;
-    pos = out;
-    while (end - in >= 3) {
-        *pos++ = table[in[0] >> 2]; // in[0] / 2 / 2
-        *pos++ = table[((in[0] & 0x03) << 4) | (in[1] >> 4)];
-        *pos++ = table[((in[1] & 0x0f) << 2) | (in[2] >> 6)];
-        *pos++ = table[in[2] & 0x3f];
-        in += 3;
-    }
+    for (i = 0, j = 0; i < numBytes; i+=3, j+= 4) {
+        v = bytes[i];
+        v = i+1 < numBytes ? v << 8 | bytes[i+1] : v << 8;
+        v = i+2 < numBytes ? v << 8 | bytes[i+2] : v << 8;
 
-    if (end - in) {
-        *pos++ = table[in[0] >> 2];
-        if (end - in == 1) {
-            *pos++ = table[(in[0] & 0x03) << 4];
-            *pos++ = '=';
+        output[j] = table[(v >> 18) & 0x3F];
+        output[j+1] = table[(v >> 12) & 0x3F];
+        if (i + 1 < numBytes) {
+            output[j+2] = table[(v >> 6) & 0x3F];
         } else {
-            *pos++ = table[((in[0] & 0x03) << 4) | (in[1] >> 4)];
-            *pos++ = table[(in[1] & 0x0f) << 2];
+            output[j+2] = '=';
         }
-        *pos++ = '=';
+
+        if (i + 2 < numBytes) {
+            output[j+3] = table[v & 0x3F];
+        } else {
+            output[j+3] = '=';
+        }
     }
 
     return output;
@@ -77,10 +114,11 @@ char* bytes2base64(const unsigned char* bytes, size_t numBytes) {
  * @return base64 decoded bytes
  */
 unsigned char* base642bytes(const char* base64string, size_t* numBytes) {
-    size_t len = strlen(base64string);
-    /* will be at least this big, but we may skip whitespace */
-    *numBytes = ((len / 4) * 3);
+    if (base64string == NULL)
+        return NULL;
 
+    size_t len = strlen(base64string);
+    *numBytes = byte_size(base64string);
     unsigned char *output = calloc(*numBytes + 1, sizeof(unsigned char));
     if (output == NULL) {
         *numBytes = 0;
@@ -94,7 +132,7 @@ unsigned char* base642bytes(const char* base64string, size_t* numBytes) {
     size_t realLen = 0;
 
     while (base64string < end) {
-        unsigned char c = decode[(unsigned int) *base64string++];
+        int c = decode[(int) *base64string++];
 
         switch (c) {
             case B64WHITESPACE:
